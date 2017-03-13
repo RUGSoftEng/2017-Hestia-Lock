@@ -196,6 +196,8 @@ void printInfo(BridgeClient client){
   }
   client.print(F("The lock is is position: "));
   client.println(encoderPosCount);
+  client.print(F("The lock opens when position is: "));
+  client.println(openPosition);
 }
 
 void invalidArgument(BridgeClient client, String command){
