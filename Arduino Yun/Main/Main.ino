@@ -159,6 +159,8 @@ void process(BridgeClient client){
   }
   else if(command.equals("closelock")){
     closeLock();
+  } else if(command.equals("info")){
+    printInfo(client);
   }
   else {
     invalidArgument(client, command);
@@ -183,6 +185,17 @@ void closeLock(){
   }
   servo.write(90);
   servo.detach();
+}
+
+void printInfo(BridgeClient client){
+  client.print(F("Lock is currently: "));
+  if(isLockOpen()){
+    client.println(F("open"));
+  } else {
+    client.println(F("closed"));
+  }
+  client.print(F("The lock is is position: "));
+  client.println(encoderPosCount);
 }
 
 void invalidArgument(BridgeClient client, String command){
