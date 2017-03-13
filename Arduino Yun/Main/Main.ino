@@ -14,19 +14,38 @@
  */
 
 #define BITS_PER_SECOND 9600
-#define LED_PIN 13
+#define GREEN_PIN 3
+#define RED_PIN 2
+#define ENCA_PIN 7
+#define ENCB_PIN 6
+#define SERVO_PIN 8
+#define BUT_PIN 10
 
 BridgeServer server;
+Servo servo;
 
+int encoderPosCount = 0;
+int pinALast;
+int aVal;
+int buttonCount = 0;
+int openPosition;
 /*
  * Code written for arduino devices works a little different than normal C code.
  * The compiler needs a setup and loop function, the setup function is called at every startup 
  * after this the loop function is called indefinetly.
  */
 void setup() {
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(RED_PIN, OUTPUT);
+  pinMode(GREEN_PIN, OUTPUT);
+  pinMode(ENCA_PIN, INPUT);
+  pinMode(ENCB_PIN, INPUT);
+  pinMode(BUT_PIN, INPUT_PULLUP);
+
+  pinALast = digitalRead(ENCA_PIN);
+  openPosition = 10;
   
   Serial.begin(BITS_PER_SECOND);
+  Serial.println("Starting");
   Bridge.begin();
 
   server.listenOnLocalhost();
@@ -35,11 +54,97 @@ void setup() {
 
 void loop() {
   BridgeClient client = server.accept();
+  
   if(client){
     process(client);
     client.stop();
   }
-  delay(50);
+  
+  checkRotation();
+  
+  checkButtonPress();
+  
+  setLights();
+   
+  delay(5);
+}
+
+void setLights(){
+  if(isLockOpen()){
+    digitalWrite(GREEN_PIN, HIGH);
+    digitalWrite(RED_PIN, LOW);
+   } else {
+    digitalWrite(RED_PIN, HIGH);
+    digitalWrite(GREEN_PIN, LOW);    
+   }
+}
+
+void checkRotation(){
+  aVal = digitalRead(ENCA_PIN);
+   if (aVal != pinALast){ // Means the knob is rotating
+     // if the knob is rotating, we need to determine direction
+     // We do that by reading pin B.
+     if (digitalRead(ENCB_PIN) != aVal) {  // Means pin A Changed first - We're Rotating Clockwise
+       encoderPosCount ++;
+     } else {// Otherwise B changed first and we're moving CCW
+       encoderPosCount--;
+     }
+     Serial.println(encoderPosCount);
+   } 
+   pinALast = aVal;
+}
+
+void checkButtonPress(){
+  if(digitalRead(BUT_PIN) == LOW){
+    buttonCount++;
+  } else {
+    if(buttonCount >20 && buttonCount < 100){
+      if(isLockOpen()){
+        closeLock();
+      } else {
+        openLock();
+      }
+    } else if(buttonCount > 500){
+      reset();
+    }
+    buttonCount = 0;
+  }
+}
+
+void reset(){
+  Serial.println("Resetting...");
+  digitalWrite(GREEN_PIN, HIGH);
+  digitalWrite(RED_PIN, HIGH);
+  delay(1000);
+  
+  encoderPosCount = 0;
+  servo.attach(SERVO_PIN);
+  while(digitalRead(BUT_PIN)!=LOW){
+    servo.write(80);
+    checkRotation();
+  }
+  openPosition = encoderPosCount-5;
+  servo.write(90);
+  servo.detach();
+  Serial.write("NEW OPEN POSITION: ");
+  Serial.println(openPosition);
+  delay(1000);
+}
+
+boolean isLockOpen(){
+  if(encoderPosCount > openPosition){
+    return true;
+  } else {
+    return false;
+  }
+}
+
+boolean isLockClosed(){
+  if(encoderPosCount <= 0){
+    return true;
+  } else {
+    return false;
+  }
 }
 
 /*
@@ -50,24 +155,34 @@ void process(BridgeClient client){
   String command = client.readStringUntil('/');
   command = command.substring(0,command.length()-2);
   if(command.equals("openlock")){
-    openLock(client);
+    openLock();
   }
   else if(command.equals("closelock")){
-    closeLock(client);
+    closeLock();
   }
   else {
     invalidArgument(client, command);
   }
 }
 
-void openLock(BridgeClient client){
-  digitalWrite(LED_PIN, HIGH);
-  client.print(F("Lock open"));
+void openLock(){
+  servo.attach(SERVO_PIN);
+  while(!isLockOpen()){
+    servo.write(70);
+    checkRotation();
+  }
+  servo.write(90);
+  servo.detach();
 }
 
-void closeLock(BridgeClient client){
-  digitalWrite(LED_PIN, LOW);
-  client.print(F("Lock close"));
+void closeLock(){
+  servo.attach(SERVO_PIN);
+  while(!isLockClosed()){
+    servo.write(110);
+    checkRotation();
+  }
+  servo.write(90);
+  servo.detach();
 }
 
 void invalidArgument(BridgeClient client, String command){
