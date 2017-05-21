@@ -1,3 +1,5 @@
+#include <QueueList.h>
+
 #include <Bridge.h>
 #include <BridgeServer.h>
 #include <BridgeClient.h>
@@ -16,18 +18,18 @@
 #define BITS_PER_SECOND 9600
 #define LOOP_INTERVAL 50
 #define SETUP_TIME 5000
-#define LED_PIN 9
 #define BUT_PIN 10
 #define SERVO_PIN 11
 #define SETUP "setup\r\n"
 #define ON "on"
-#define ROTATE "rotate"
+#define LEDS "leds"
+#define NUMBER_LEDS 6
 
 BridgeServer server;
 BridgeClient client;
-Servo servo;
 int setupDuration = 0;
 String key = "HASasdA092Qe43-adfASD";
+int leds[NUMBER_LEDS];
 
 /*
  * Code written for arduino devices works a little different than normal C code.
@@ -35,7 +37,9 @@ String key = "HASasdA092Qe43-adfASD";
  * after this the loop function is called indefinetly.
  */
 void setup() {
-  pinMode(LED_PIN, OUTPUT);
+  for(int i = 0; i< NUMBER_LEDS; i++){
+    pinMode(i, OUTPUT);
+  }
   pinMode(BUT_PIN, INPUT_PULLUP);
   
   Serial.begin(BITS_PER_SECOND);
@@ -43,21 +47,21 @@ void setup() {
 
   server.listenOnLocalhost();
   server.begin();
-  servo.attach(SERVO_PIN);
-  servo.write(90);
 }
 
 void loop() {
-   client = server.accept();
+  client = server.accept();
+  
   if(client){
-    process(client);
+    process(client);    
     client.stop();
-  }
-  delay(LOOP_INTERVAL);
+  }   
+  
   if(digitalRead(BUT_PIN)==LOW){
     setupDuration = SETUP_TIME;
-  } else if(setupDuration > 0) {
+  } else if(setupDuration > 0) {    
     setupDuration -= LOOP_INTERVAL;
+    delay(LOOP_INTERVAL);
   }
 }
 
@@ -70,52 +74,63 @@ void process(BridgeClient client){
   Serial.println(command);
   if(command == SETUP){
     setupConnection(client);
+    return;
   }else if(command == key){
     command = client.readStringUntil('/');
     Serial.println(command);
     if(command == ON){
-      on(client);
-    } else if(command == ROTATE){
-      rotate(client);
+      onAction(client);
+      return;
+    } else if(command == LEDS){
+      ledAction(client);
+      return;
     } else{
       invalidArgument(client);
+      return;
     }
   } else {
     invalidArgument(client);
+    return;
   }
 }
 
 void setupConnection(BridgeClient client){
   if(setupDuration > 0){
     client.print(key);
-    setupDuration = 0;
+    setupDuration = 0;    
+    client.stop();
   } else {
     invalidArgument(client);
   }
+  
+    client.stop();
 }
 
-void on(BridgeClient client){
+void onAction(BridgeClient client){
   int value = client.parseInt();
   Serial.println(value);
   if(value == 1){
-    digitalWrite(LED_PIN, HIGH);
-    Serial.println("light on");
+    for(int i = 0; i < NUMBER_LEDS; i++){
+      digitalWrite(i, LOW);      
+      Serial.println("lights off");
+    }
   } else {
-    digitalWrite(LED_PIN, LOW);
-    Serial.println("light off");
+    for(int i = 0; i < NUMBER_LEDS; i++){
+      digitalWrite(i, HIGH);      
+      Serial.println("lights on");
+    }
   }
 }
 
-void rotate(BridgeClient client){
+void ledAction(BridgeClient client){
     int value = client.parseInt();
-    Serial.println(value);
-    if(88<=value && value<=92){
-      servo.write(90);
-      delay(15);
-    } else{      
-      servo.write(value);
-      delay(15);
-      Serial.println("Servo running");
+    
+    for(int i = 0; i < value; i++){
+      digitalWrite(i, HIGH);      
+    }
+
+    for(int i = 0; i < NUMBER_LEDS ; i++){
+      digitalWrite(i, LOW);  
     }
 }
 
