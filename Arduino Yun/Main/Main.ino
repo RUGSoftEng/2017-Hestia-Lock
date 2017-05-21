@@ -14,9 +14,20 @@
  */
 
 #define BITS_PER_SECOND 9600
-#define LED_PIN 13
+#define LOOP_INTERVAL 50
+#define SETUP_TIME 5000
+#define LED_PIN 9
+#define BUT_PIN 10
+#define SERVO_PIN 11
+#define SETUP "setup\r\n"
+#define ON "on"
+#define ROTATE "rotate"
 
 BridgeServer server;
+BridgeClient client;
+Servo servo;
+int setupDuration = 0;
+String key = "HASasdA092Qe43-adfASD";
 
 /*
  * Code written for arduino devices works a little different than normal C code.
@@ -25,21 +36,29 @@ BridgeServer server;
  */
 void setup() {
   pinMode(LED_PIN, OUTPUT);
+  pinMode(BUT_PIN, INPUT_PULLUP);
   
   Serial.begin(BITS_PER_SECOND);
   Bridge.begin();
 
   server.listenOnLocalhost();
   server.begin();
+  servo.attach(SERVO_PIN);
+  servo.write(90);
 }
 
 void loop() {
-  BridgeClient client = server.accept();
+   client = server.accept();
   if(client){
     process(client);
     client.stop();
   }
-  delay(50);
+  delay(LOOP_INTERVAL);
+  if(digitalRead(BUT_PIN)==LOW){
+    setupDuration = SETUP_TIME;
+  } else if(setupDuration > 0) {
+    setupDuration -= LOOP_INTERVAL;
+  }
 }
 
 /*
@@ -48,30 +67,62 @@ void loop() {
  */
 void process(BridgeClient client){
   String command = client.readStringUntil('/');
-  command = command.substring(0,command.length()-2);
-  if(command.equals("openlock")){
-    openLock(client);
-  }
-  else if(command.equals("closelock")){
-    closeLock(client);
-  }
-  else {
-    invalidArgument(client, command);
+  Serial.println(command);
+  if(command == SETUP){
+    setupConnection(client);
+  }else if(command == key){
+    command = client.readStringUntil('/');
+    Serial.println(command);
+    if(command == ON){
+      on(client);
+    } else if(command == ROTATE){
+      rotate(client);
+    } else{
+      invalidArgument(client);
+    }
+  } else {
+    invalidArgument(client);
   }
 }
 
-void openLock(BridgeClient client){
-  digitalWrite(LED_PIN, HIGH);
-  client.print(F("Lock open"));
+void setupConnection(BridgeClient client){
+  if(setupDuration > 0){
+    client.print(key);
+    setupDuration = 0;
+  } else {
+    invalidArgument(client);
+  }
 }
 
-void closeLock(BridgeClient client){
-  digitalWrite(LED_PIN, LOW);
-  client.print(F("Lock close"));
+void on(BridgeClient client){
+  int value = client.parseInt();
+  Serial.println(value);
+  if(value == 1){
+    digitalWrite(LED_PIN, HIGH);
+    Serial.println("light on");
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    Serial.println("light off");
+  }
 }
 
-void invalidArgument(BridgeClient client, String command){
-  client.print(F("Invalid Argument: "));
-  client.print(command);
+void rotate(BridgeClient client){
+    int value = client.parseInt();
+    Serial.println(value);
+    if(88<=value && value<=92){
+      servo.write(90);
+      delay(15);
+    } else{      
+      servo.write(value);
+      delay(15);
+      Serial.println("Servo running");
+    }
+}
+
+void invalidArgument(BridgeClient client){
+  client.println(F("Usage:"));
+  client.println(F("/setup"));
+  client.println(F("/<string:id>/rotate/<int:rotation>"));
+  client.println(F("/<string:id>/on/<int:on/off>"));
 }
 
